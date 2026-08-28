@@ -20,6 +20,22 @@ from .config import FortiGateConfig
 from .exceptions import FortiGateAuthError, FortiGateDataError, FortiGateNetworkError
 from .logging_utils import get_logger
 
+_VALID_LOG_TYPES = {"traffic", "event", "virus", "webfilter", "ips"}
+
+
+def _require_str(value: Any, field: str) -> str:
+    if not isinstance(value, str):
+        raise FortiGateDataError(f"{field} debe ser un string, no {type(value).__name__}.")
+    return value
+
+
+def _validate_rows(rows: Any) -> int:
+    if isinstance(rows, bool) or not isinstance(rows, int):
+        raise FortiGateDataError(f"rows debe ser un entero, no {type(rows).__name__}.")
+    if not 1 <= rows <= 1000:
+        raise FortiGateDataError("rows debe estar entre 1 y 1000.")
+    return rows
+
 
 class FortiGateClient:
     """Cliente de administración de un firewall FortiGate vía su REST API.
@@ -131,8 +147,8 @@ class FortiGateClient:
             >>> client.add_address_object("servidor-web", "10.0.0.5/32")
             {'status': 'success', 'mkey': 'servidor-web', ...}
         """
-        name = (name or "").strip()
-        subnet = (subnet or "").strip()
+        name = _require_str(name, "name").strip()
+        subnet = _require_str(subnet, "subnet").strip()
         if not name or not subnet:
             raise FortiGateDataError("name y subnet no pueden estar vacíos.")
         if "/" in subnet:
@@ -162,7 +178,11 @@ class FortiGateClient:
             >>> client.get_logs("traffic", rows=10)
             [{'srcip': '10.0.0.5', 'dstip': '8.8.8.8', 'action': 'accept', ...}]
         """
-        rows = max(1, min(int(rows), 1000))
+        if not isinstance(log_type, str) or log_type not in _VALID_LOG_TYPES:
+            raise FortiGateDataError(
+                f"log_type={log_type!r} inválido. Valores permitidos: {sorted(_VALID_LOG_TYPES)}."
+            )
+        rows = _validate_rows(rows)
         response = self._request(
             "GET", f"/api/v2/monitor/log/disk/{log_type}", params={"rows": rows}
         )
